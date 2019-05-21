@@ -1,0 +1,134 @@
+---
+title: "isolation_by_distance"
+author: "Matthew Bootsma"
+date: "April 18, 2019"
+output: html_document
+---
+Running an isolation by distance analysis. Got the first section that uses the ".dist" function from Peter, but the outlier at ~5,0.03 was odd, as was the slope ~=0
+
+I used the matrix of distances I built in GIS using "Point Distance" and the slope got much more biologically relevant. Not sure the unit, the points were in decimal degrees to start so perhaps it's a measure in decimal degrees? At this scale the margin of error due to a 2d vs 3d measure is proportionally small relative to the overall distances so I'm not too worried about making sure it's accounting for curvatrure of the earth.
+
+Scale is correct, again, not sure on units, hopefully I don't have to get this to Miles for the publication but more likely than not I will. Just go ask the GIS department how to measure my points on the map at that point I guess?
+
+#dependencies and genepop
+```{r}
+library(ggplot2)
+library(poppr)
+library(adegenet)
+
+total_dat <-read.genepop("../SNPS/v6_SNPs_natural_pops.gen", ncode = 3) 
+```
+#calculate distances
+
+NOTE: MAKE SURE the lat lon list is ordered the same as your genepop. It looks ok right now but IDK if it's perfect, that outlier on the bottom...
+I double checked it and it looks ok... maybe the R calculation is just not as good as the GIS one
+The simulation is still usefull to confirm that we have some clear IBD here
+```{r}
+total_dat_genpop <- genind2genpop(total_dat)
+
+coords <- read.csv("./1710_lat_lon_natural_pops_same_order_as_genpop.csv") # coords = 2 column DF of decimal degrees
+
+geo_dist_total <- dist(coords, method = "euclidean") #the "dist"function then supposedly estimates relative distances (Euclidean).
+gen_dist_total <- dist.genpop(total_dat_genpop, method = 2 ) ## method = 2 is Nei's
+gen_dist_total
+unique(total_dat$pop)
+geo_dist_total
+```
+#mantel test and plot
+```{r}
+## actual mantel test
+ibd_total <- mantel.randtest(gen_dist_total, geo_dist_total)
+plot(ibd_total)
+
+plot(geo_dist_total, gen_dist_total, main = "All sites")
+abline(lm(gen_dist_total~geo_dist_total), col = "red")
+```
+#ggplot
+```{r}
+# #can we color points by pop?
+# unique(total_dat$pop)
+# color_cat = NULL
+# r = 19
+# for (i in 1:20) {
+#   
+#   color_cat = c(color_cat,rep(as.character(unique(total_dat$pop))[i],r))
+#   
+#   r = r-1
+# }
+# color_cat 
+# #format for ggplot
+# v1 = as.numeric(geo_dist_total)
+# v1.01 = as.dist(geo_dist_total)
+# 
+# v2 = as.numeric(gen_dist_total)
+# dat_gplot = cbind.data.frame(v1,v2,color_cat)
+# names(dat_gplot) = c("geo_dist", "gen_dist","grpz")
+# 
+# 
+# 
+# #plot in gg
+# ggplot(dat_gplot, aes(geo_dist, gen_dist)) + 
+#     geom_point()+geom_smooth(method = "lm", color = "#000099")+ 
+#   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+# 
+# #plot in gg
+# ggplot(dat_gplot, aes(geo_dist, gen_dist, color = color_cat)) + 
+#     geom_point()+ 
+#     facet_wrap(color_cat)
+#     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+# 
+# 
+# geo_dist_total[which(gen_dist_total == min(gen_dist_total))]
+# names(gen_dist_total)[111]
+# geo_dist_total[111]
+```
+#making key to build my own list of geo_dist calculated in GIS
+  I'm not sure the .dist function is working correctly
+```{r}
+# ID_vec = c(11,17,10,12,1,13,15,2,18,19,3,4,5,6,7,8,9,21,22,23)
+# 
+# pwise_comparisons = as.data.frame(matrix(nrow = 190, ncol = 2))
+# 
+# 
+# pcomp_current_iter = 2
+# for (i in 1:190) {
+# 
+#   
+#   pwise_comparisons[i,1] = ID_vec[1]
+#   
+#   pwise_comparisons[i,2] = ID_vec[pcomp_current_iter]
+#   
+#   pcomp_current_iter = pcomp_current_iter+1
+#   
+#   if (pcomp_current_iter > length(ID_vec)) {
+#     ID_vec = ID_vec[-1]
+#     pcomp_current_iter = 2
+#   }
+#   
+# }
+# 
+# write.csv(pwise_comparisons,"./pairwise_comparison_key_for_GIS_geoDist.csv")
+```
+#plot with my calculated geo_dist
+```{r}
+my_geo_dist = read.csv("./pairwise_comparison_key_for_GIS_geoDist.csv")
+
+#format for ggplot
+v2.2 = as.numeric(gen_dist_total)
+dat_gplot2 = cbind.data.frame(my_geo_dist$geo_dist,v2.2)
+names(dat_gplot2) = c("geo_dist", "gen_dist")
+```
+
+
+```{r}
+pdf("./IBD_v6_natural_pops.pdf")
+ggplot(dat_gplot2, aes(geo_dist, gen_dist)) + 
+    geom_point()+geom_smooth(method = "lm", color = "#000099")+ 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+ 
+  scale_x_continuous(name="Geographic Distance
+(Euclidean)", limits=c(0, 10)) +
+  scale_y_continuous(name="Genetic Distance
+(Edwards)", limits=c(0, 0.2))
+dev.off()
+```
+
